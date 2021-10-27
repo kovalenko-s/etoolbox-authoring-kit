@@ -32,11 +32,13 @@ import com.exadel.aem.toolkit.api.handlers.Handler;
 import com.exadel.aem.toolkit.api.handlers.Handles;
 import com.exadel.aem.toolkit.api.handlers.Source;
 import com.exadel.aem.toolkit.api.handlers.Target;
+import com.exadel.aem.toolkit.core.CoreConstants;
 import com.exadel.aem.toolkit.plugin.exceptions.ValidationException;
 import com.exadel.aem.toolkit.plugin.maven.PluginRuntime;
 import com.exadel.aem.toolkit.plugin.utils.AnnotationUtil;
 import com.exadel.aem.toolkit.plugin.utils.DialogConstants;
 import com.exadel.aem.toolkit.plugin.utils.StringUtil;
+import com.exadel.aem.toolkit.plugin.utils.TargetUtil;
 import com.exadel.aem.toolkit.plugin.validators.CharactersObjectValidator;
 import com.exadel.aem.toolkit.plugin.validators.Validation;
 
@@ -96,7 +98,7 @@ public class RichTextEditorHandler implements Handler {
         inlineBuilder.setChildBuilder(popoversBuilder);
         fullScreenBuilder.setChildBuilder(new RteTreeWithListsBuilder(popoversBuilder)); // 'cloned' popovers builder
 
-        RteNodeWithListBuilder tableEditBuilder = new RteNodeWithListBuilder(DialogConstants.NN_TABLE_EDIT_OPTIONS,DialogConstants.PN_TOOLBAR);
+        RteNodeWithListBuilder tableEditBuilder = new RteNodeWithListBuilder(DialogConstants.NN_TABLE_EDIT_OPTIONS, DialogConstants.PN_TOOLBAR);
         tableEditBuilder.setFilter((pluginId, feature) -> DialogConstants.NN_TABLE.equals(pluginId) && !RteFeatures.TABLE_TABLE.equals(feature));
         // we do not feed non-'table#...' features to ./uiSettings/cui/tableEditOptions
 
@@ -111,7 +113,11 @@ public class RichTextEditorHandler implements Handler {
         ).forEach(featureItem -> processFeatureItem(featureItem, tableEditBuilder, pluginsBuilder));
 
         // build uiSettings node with sub-nodes, append conditionally if not empty
-        Target uiSettings = target.getOrCreateTarget(DialogConstants.NN_UI_SETTINGS);
+        String uiSettingsPath = TargetUtil.isMultifield(target)
+            ? DialogConstants.NN_FIELD + CoreConstants.SEPARATOR_SLASH + DialogConstants.NN_UI_SETTINGS
+            : DialogConstants.NN_UI_SETTINGS;
+        Target uiSettings = target.getOrCreateTarget(uiSettingsPath);
+
         Target cui = uiSettings.getOrCreateTarget(DialogConstants.NN_CUI);
         inlineBuilder.build(cui);
         // if .features() are set, but .fullscreenFeatures() are not
@@ -128,15 +134,18 @@ public class RichTextEditorHandler implements Handler {
         // if .fullscreenFeatures() are set, build nodes './fullscreen' and './dialogFullScreen' (latter if needed) from .fullscreenFeatures()
         fullScreenBuilder.build(cui);
         fullScreenBuilder.setName(DialogConstants.NN_DIALOG_FULL_SCREEN);
-        if (renderDialogFullScreenNode) fullScreenBuilder.build(cui);
+        if (renderDialogFullScreenNode) {
+            fullScreenBuilder.build(cui);
+        }
         tableEditBuilder.build(cui);
         getIconsNode(cui);
         // if ./cui node has been added any children, append it to ./uiSettings and then append ./uiSettings to root target
-        if (rteAnnotation.externalStyleSheets().length != 0)
+        if (rteAnnotation.externalStyleSheets().length != 0) {
             target.attribute(DialogConstants.PN_EXTERNAL_STYLESHEETS, Arrays.asList(rteAnnotation.externalStyleSheets()).toString().replace(" ", ""));
+        }
         // build rtePlugins node, merge it to existing target structure (to pick up child nodes that may have already been populated)
         // then populate rtePlugins node with the context rteAnnotation fields, then merge again
-        Target rtePlugins = pluginsBuilder.build(target);
+        Target rtePlugins = pluginsBuilder.build(TargetUtil.isMultifield(target) ? target.getTarget(DialogConstants.NN_FIELD) : target);
         getFormatNode(rtePlugins.getOrCreateTarget(DialogConstants.NN_PARAFORMAT));
         getSpecialCharactersNode(rtePlugins.getOrCreateTarget(DialogConstants.NN_MISCTOOLS));
         populatePasteRulesNode(rtePlugins);
@@ -159,8 +168,8 @@ public class RichTextEditorHandler implements Handler {
         }
 
         // build htmlLinkRules node and append to root target, if needed
-        populateHtmlLinkRules(target);
-        clearEmpty(target);
+        populateHtmlLinkRules(TargetUtil.isMultifield(target) ? target.getTarget(DialogConstants.NN_FIELD) : target);
+        clearEmpty(TargetUtil.isMultifield(target) ? target.getTarget(DialogConstants.NN_FIELD) : target);
         if (!isEmpty(rtePlugins)) {
             rtePlugins.getOrCreateTarget(DialogConstants.NN_STYLES);
         }
@@ -283,7 +292,7 @@ public class RichTextEditorHandler implements Handler {
      * Populates with attributes the {@code htmlPasteRules} node
      * @param parent {@code Target} instance representing the Granite node that stores the RTE config
      */
-    private void populatePasteRulesNode(Target parent){
+    private void populatePasteRulesNode(Target parent) {
         HtmlPasteRules rules = this.rteAnnotation.htmlPasteRules();
         Target edit = parent.getOrCreateTarget(DialogConstants.NN_EDIT);
         Target htmlPasteRulesNode = edit.getOrCreateTarget(DialogConstants.NN_HTML_PASTE_RULES);
